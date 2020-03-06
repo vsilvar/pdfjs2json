@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>PDF.js to JSON</title>
+    <link rel=stylesheet href="https://pro.fontawesome.com/releases/v5.2.0/css/all.css">
+    <style>
+        /* General page styling*/
+        @import url('https://fonts.googleapis.com/css?family=Roboto&display=swap');
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: #000;
+            color: #fff;
+        }
+        pre {
+            tab-size: 2;
+        }
+
+        /* PDF upload button styling */
+        [type="file"] {
+            height: 0;
+            overflow: hidden;
+            width: 0;
+        }
+
+        [type="file"] + label {
+            background: #EC7600;
+            border: none;
+            border-radius: 50px;
+            color: #fff;
+            cursor: pointer;
+            display: inline-block;
+            overflow: hidden;
+            font-family: 'Poppins', sans-serif;
+            font-size: inherit;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            outline: none;
+            padding: 1rem 50px;
+            position: relative;
+            -webkit-transition: all 0.3s;
+            transition: all 0.3s;
+            vertical-align: middle;
+        }
+        [type="file"] + label:hover {
+            background: #ff962e;
+        }
+        [type="file"] + label::before {
+            color: #fff;
+            content: "\f382";
+            font-family: "Font Awesome 5 Pro";
+            font-size: 100%;
+            height: 100%;
+            right: 130%;
+            line-height: 3.3;
+            position: absolute;
+            top: 0px;
+            -webkit-transition: all 0.3s;
+            transition: all 0.3s;
+        }
+        [type="file"] + label:hover::before {
+            right: 75%;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js?autorun=false&amp;skin=sons-of-obsidian"></script>
+    <script type="text/javascript" src="https://mozilla.github.io/pdf.js/build/pdf.js"></script>
+    <script>
+        // Loaded via <script> tag, create shortcut to access PDF.js exports.
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+
+        // The workerSrc property shall be specified.
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.js';
+
+        const render_options = {
+            // Replaces all occurrences of whitespace with standard spaces (0x20). The default value is `false`.
+            normalizeWhitespace: true,
+            // Do not attempt to combine same line TextItem's. The default value is `false`.
+            disableCombineTextItems: false
+        };
+
+        async function ParsePDF(pdfData){
+            // Using DocumentInitParameters object to load binary data.
+            console.log('-- Loading PDF --');
+            const doc = await pdfjsLib.getDocument({data: pdfData}).promise;
+
+            console.log('-- Getting metadata --');
+            const metadata = await doc.getMetadata().catch(err => null);
+            console.log(metadata);
+
+            const result = {
+                numPages: doc.numPages,
+                ...metadata,
+                pages: [],
+                styles: {}
+            };
+
+            console.log('-- Parsing pages --');
+            for (var i = 1; i <= result.numPages; i++) {
+                const page = await doc.getPage(i);
+                const textContent = await page.getTextContent(render_options);
+
+                result.styles = {...result.styles, ...textContent.styles};
+                result.pages.push({
+                    number: page.pageNumber,
+                    //view: page.view,
+                    items: textContent.items.map(item => {
+                        const { dir, transform, ...filteredItem } = item;
+
+                        return {
+                            ...filteredItem,
+                            positionX: item.transform[4],
+                            positionY: item.transform[5]
+                        }
+                    })
+                });
+            }
+
+            console.log('-- Finished parsing --');
+            doc.destroy();
+            return result;
+        }
+    </script>
+    <script>
+        function RemoveExtension(filename){
+            var lastDotPosition = filename.lastIndexOf(".");
+            if (lastDotPosition === -1) return filename;
+            else return filename.substr(0, lastDotPosition);
+        }
+
+        function SaveFile(blob, fileName){
+            const url = window.URL.createObjectURL(blob);
+            const anchorElem = document.createElement("a");
+            anchorElem.style = "display: none";
+            anchorElem.href = url;
+            anchorElem.download = fileName;
+
+            document.body.appendChild(anchorElem);
+            anchorElem.click();
+
+            // Cleanup
+            document.body.removeChild(anchorElem);
+            setTimeout(function() {
+                window.URL.revokeObjectURL(url);
+            }, 500);
+        }
+
+        async function LoadPDF(event){
+            const file = event.target.files[0]
+            if(file.type != "application/pdf"){
+                console.error(file.name, "is not a PDF file.");
+                return;
+            }
+
+            var fileReader = new FileReader();  
+
+            fileReader.onload = async function() {
+                const pdf = await ParsePDF(new Uint8Array(this.result));
+
+                console.log('-- Converting to JSON --');
+                console.log(pdf);
+                const pdfJson = JSON.stringify(pdf, null, '\t');
+
+                if(pdfJson.length > 1000000){
+                    document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne("// File too big to display, downloading instead...", 'js', true);
+                    const blob = new Blob([pdfJson], {type: "octet/stream"});
+                    console.log(`-- Downloading JSON [${(blob.size / (1024 * 1024)).toFixed(2)}MB] --`);
+                    SaveFile(blob, RemoveExtension(file.name) + '.json');
+                }else{
+                    console.log('-- Pretty printing JSON --');
+                    document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne(pdfJson, 'js', true);
+                }    
+            };
+
+            fileReader.readAsArrayBuffer(file);
+        }
+    </script>
+  </head>
+  <body>
+    <h1>PDF.js to JSON</h1>
+    <input id="pdf-upload" type="file" onchange="LoadPDF(event)"/>
+    <label for="pdf-upload" />Upload</label>
+
+    <pre class="prettyprint"><code id="jsonContent" class="language-js"></code></pre>
+  </body>
+</html>
