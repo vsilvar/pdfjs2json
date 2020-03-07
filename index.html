@@ -212,7 +212,7 @@
             }, 500);
         }
 
-        async function LoadPDF(pdf){
+        async function LoadPDF(pdf, originalFilename){
             const parsedPdf = await ParsePDF(pdf);
 
             console.log('-- Converting to JSON --');
@@ -223,7 +223,7 @@
                 document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne("// File too big to display, downloading instead...", 'js', true);
                 const blob = new Blob([pdfJson], {type: "octet/stream"});
                 console.log(`-- Downloading JSON [${(blob.size / (1024 * 1024)).toFixed(2)}MB] --`);
-                SaveFile(blob, RemoveExtension(file.name) + '.json');
+                SaveFile(blob, RemoveExtension(originalFilename) + '.json');
             }else{
                 console.log('-- Pretty printing JSON --');
                 document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne(pdfJson, 'js', true);
@@ -240,7 +240,7 @@
             var fileReader = new FileReader();  
 
             fileReader.onload = async function() {
-                await LoadPDF(this.result);
+                await LoadPDF(this.result, file.name);
             };
 
             fileReader.readAsArrayBuffer(file);
@@ -250,7 +250,7 @@
             const input = document.getElementById(element.htmlFor);
             try {
                 new URL(input.value);
-                await LoadPDF(input.value);
+                await LoadPDF(input.value, input.value.substring(input.value.lastIndexOf('/') + 1));
             } catch (_) {
                 console.warn(_);
                 input.value = "";
