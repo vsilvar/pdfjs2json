@@ -15,6 +15,67 @@
             tab-size: 2;
         }
 
+        /* URL field styling */
+        .form__group {
+            position: relative;
+            padding: 15px 0 0;
+            margin-top: 10px;
+            width: 50%;
+        }
+
+        .form__field {
+            font-family: inherit;
+            float: left;
+            width: calc(100% - 200px);
+            margin-right: 20px;
+            border: 0;
+            border-bottom: 2px solid #9b9b9b;
+            outline: 0;
+            font-size: 1.3rem;
+            color: #fff;
+            padding: 7px 0;
+            background: transparent;
+            transition: border-color 0.2s;
+        }
+        .form__field::placeholder {
+            color: transparent;
+        }
+        .form__field:placeholder-shown ~ .form__label {
+            font-size: 1.3rem;
+            cursor: text;
+            top: 20px;
+        }
+
+        .form__label {
+            position: absolute;
+            top: 0;
+            display: block;
+            transition: 0.2s;
+            font-size: 1rem;
+            color: #9b9b9b;
+        }
+
+        .form__field:focus {
+            padding-bottom: 6px;
+            font-weight: 700;
+            border-width: 3px;
+            border-image: linear-gradient(to right, #EC7600, #ff962e);
+            border-image-slice: 1;
+        }
+        .form__field:focus ~ .form__label {
+            position: absolute;
+            top: 0;
+            display: block;
+            transition: 0.2s;
+            font-size: 1rem;
+            color: #EC7600;
+            font-weight: 700;
+        }
+
+        .form__field:required, .form__field:invalid {
+            box-shadow: none;
+        }
+
         /* PDF upload button styling */
         [type="file"] {
             height: 0;
@@ -22,7 +83,7 @@
             width: 0;
         }
 
-        [type="file"] + label {
+        input + label {
             background: #EC7600;
             border: none;
             border-radius: 50px;
@@ -41,24 +102,32 @@
             transition: all 0.3s;
             vertical-align: middle;
         }
-        [type="file"] + label:hover {
+        input + label:hover {
             background: #ff962e;
         }
-        [type="file"] + label::before {
+        input + label::before {
             color: #fff;
-            content: "\f382";
             font-family: "Font Awesome 5 Pro";
             font-size: 100%;
             height: 100%;
-            right: 130%;
+            left: -100px;
             line-height: 3.3;
             position: absolute;
             top: 0px;
             -webkit-transition: all 0.3s;
             transition: all 0.3s;
         }
-        [type="file"] + label:hover::before {
-            right: 75%;
+        input + label.label__upload {
+            margin-left: calc(25% - 170px);
+        }
+        input + label.label__upload::before {
+            content: "\f382";
+        }
+        input + label.label__download::before {
+            content: "\f0ed";
+        }
+        input + label:hover::before {
+            left: 20px;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js?autorun=false&amp;skin=sons-of-obsidian"></script>
@@ -77,10 +146,10 @@
             disableCombineTextItems: false
         };
 
-        async function ParsePDF(pdfData){
+        async function ParsePDF(pdf){
             // Using DocumentInitParameters object to load binary data.
             console.log('-- Loading PDF --');
-            const doc = await pdfjsLib.getDocument({data: pdfData}).promise;
+            const doc = await pdfjsLib.getDocument(typeof pdf === 'string' ? pdf : {data: new Uint8Array(pdf)}).promise;
 
             console.log('-- Getting metadata --');
             const metadata = await doc.getMetadata().catch(err => null);
@@ -143,7 +212,25 @@
             }, 500);
         }
 
-        async function LoadPDF(event){
+        async function LoadPDF(pdf){
+            const parsedPdf = await ParsePDF(pdf);
+
+            console.log('-- Converting to JSON --');
+            console.log(parsedPdf);
+            const pdfJson = JSON.stringify(parsedPdf, null, '\t');
+
+            if(pdfJson.length > 1000000){
+                document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne("// File too big to display, downloading instead...", 'js', true);
+                const blob = new Blob([pdfJson], {type: "octet/stream"});
+                console.log(`-- Downloading JSON [${(blob.size / (1024 * 1024)).toFixed(2)}MB] --`);
+                SaveFile(blob, RemoveExtension(file.name) + '.json');
+            }else{
+                console.log('-- Pretty printing JSON --');
+                document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne(pdfJson, 'js', true);
+            }
+        }
+
+        async function LoadUploadedPDF(event){
             const file = event.target.files[0]
             if(file.type != "application/pdf"){
                 console.error(file.name, "is not a PDF file.");
@@ -153,31 +240,33 @@
             var fileReader = new FileReader();  
 
             fileReader.onload = async function() {
-                const pdf = await ParsePDF(new Uint8Array(this.result));
-
-                console.log('-- Converting to JSON --');
-                console.log(pdf);
-                const pdfJson = JSON.stringify(pdf, null, '\t');
-
-                if(pdfJson.length > 1000000){
-                    document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne("// File too big to display, downloading instead...", 'js', true);
-                    const blob = new Blob([pdfJson], {type: "octet/stream"});
-                    console.log(`-- Downloading JSON [${(blob.size / (1024 * 1024)).toFixed(2)}MB] --`);
-                    SaveFile(blob, RemoveExtension(file.name) + '.json');
-                }else{
-                    console.log('-- Pretty printing JSON --');
-                    document.getElementById("jsonContent").innerHTML = PR.prettyPrintOne(pdfJson, 'js', true);
-                }    
+                await LoadPDF(this.result);
             };
 
             fileReader.readAsArrayBuffer(file);
+        }
+
+        async function DownloadPDF(element){
+            const input = document.getElementById(element.htmlFor);
+            try {
+                new URL(input.value);
+                await LoadPDF(input.value);
+            } catch (_) {
+                console.warn(_);
+                input.value = "";
+            }
         }
     </script>
   </head>
   <body>
     <h1>PDF.js to JSON</h1>
-    <input id="pdf-upload" type="file" onchange="LoadPDF(event)"/>
-    <label for="pdf-upload" />Upload</label>
+    <div class="form__group field">
+        <input type="input" class="form__field" placeholder="URL" name="url" id='url' required />
+        <label for="url" class="label__download" onclick="DownloadPDF(this)"/>Download</label>
+        <label for="url" class="form__label">URL</label>
+    </div>
+    <input id="pdf-upload" type="file" accept="application/pdf" onchange="LoadUploadedPDF(event)"/>
+    <label for="pdf-upload" class="label__upload" />Upload PDF from disk</label>
 
     <pre class="prettyprint"><code id="jsonContent" class="language-js"></code></pre>
   </body>
