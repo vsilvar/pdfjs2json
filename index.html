@@ -159,10 +159,13 @@
                 numPages: doc.numPages,
                 ...metadata,
                 pages: [],
+                strokes: [],
                 styles: {}
             };
 
             console.log('-- Parsing pages --');
+            //const opsMap = Object.fromEntries(Object.entries(pdfjsLib.OPS).map(([k, v], i) => [v, k]));
+            //const debugOpsData = [];
             for (var i = 1; i <= result.numPages; i++) {
                 const page = await doc.getPage(i);
                 const textContent = await page.getTextContent(render_options);
@@ -181,6 +184,43 @@
                         }
                     })
                 });
+
+                const opList = await page.getOperatorList();
+                let latestState = {
+                    transform: [0,0,0,0,0,0],
+                    path: [0,0,0,0],
+                    strokeRGBColor: [0,0,0],
+                    lineWidth: [0]
+                };
+
+                for (let i = 0; i < opList.fnArray.length; i++) {
+                    //debugOpsData.push({
+                    //    command: opsMap[opList.fnArray[i]],
+                    //    id: opList.fnArray[i],
+                    //    args: opList.argsArray[i]
+                    //});
+                    switch(opList.fnArray[i]){
+                        case pdfjsLib.OPS.transform:
+                            latestState.transform = opList.argsArray[i];
+                            break;
+                        case pdfjsLib.OPS.setStrokeRGBColor:
+                            latestState.strokeRGBColor = Object.keys(opList.argsArray[i]).map(k => opList.argsArray[i][k]);
+                            break;
+                        case pdfjsLib.OPS.setLineWidth:
+                            latestState.lineWidth = opList.argsArray[i][0];
+                            break;
+                        case pdfjsLib.OPS.constructPath:
+                            latestState.path = opList.argsArray[i][1];
+                            break;
+                        case pdfjsLib.OPS.stroke:
+                            result.strokes.push({
+                                x: latestState.transform[4],
+                                y: latestState.transform[5],
+                                length: latestState.path[2],
+                                color: latestState.strokeRGBColor
+                            });
+                    }
+                }
             }
 
             console.log('-- Finished parsing --');
