@@ -159,7 +159,6 @@
                 numPages: doc.numPages,
                 ...metadata,
                 pages: [],
-                strokes: [],
                 styles: {}
             };
 
@@ -169,30 +168,15 @@
             for (var i = 1; i <= result.numPages; i++) {
                 const page = await doc.getPage(i);
                 const textContent = await page.getTextContent(render_options);
-
-                result.styles = {...result.styles, ...textContent.styles};
-                result.pages.push({
-                    number: page.pageNumber,
-                    //view: page.view,
-                    items: textContent.items.map(item => {
-                        const { dir, transform, ...filteredItem } = item;
-
-                        return {
-                            ...filteredItem,
-                            positionX: item.transform[4],
-                            positionY: item.transform[5]
-                        }
-                    })
-                });
-
                 const opList = await page.getOperatorList();
+
                 let latestState = {
                     transform: [0,0,0,0,0,0],
                     path: [0,0,0,0],
                     strokeRGBColor: [0,0,0],
                     lineWidth: [0]
                 };
-
+                let strokes = [];
                 for (let i = 0; i < opList.fnArray.length; i++) {
                     //debugOpsData.push({
                     //    command: opsMap[opList.fnArray[i]],
@@ -213,7 +197,7 @@
                             latestState.path = opList.argsArray[i][1];
                             break;
                         case pdfjsLib.OPS.stroke:
-                            result.strokes.push({
+                            strokes.push({
                                 x: latestState.transform[4],
                                 y: latestState.transform[5],
                                 length: latestState.path[2],
@@ -221,6 +205,22 @@
                             });
                     }
                 }
+
+                result.styles = {...result.styles, ...textContent.styles};
+                result.pages.push({
+                    number: page.pageNumber,
+                    //view: page.view,
+                    textItems: textContent.items.map(item => {
+                        const { dir, transform, ...filteredItem } = item;
+
+                        return {
+                            ...filteredItem,
+                            positionX: item.transform[4],
+                            positionY: item.transform[5]
+                        }
+                    }),
+                    strokes: strokes
+                });
             }
 
             console.log('-- Finished parsing --');
